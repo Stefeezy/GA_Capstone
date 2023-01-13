@@ -45,6 +45,7 @@ On average, casual users actually ride a good deal longer on average than member
 
 ###Total Rides Per Month
 ![image](https://user-images.githubusercontent.com/21076965/212352649-fc1969ad-6b51-416c-b71f-e90e4970a351.png)
+
 Ridership decreases during the winter months across the board. The company operates in Chicago, where winters can be harsh, and icy roads are treacherous.
 
 Ridership increases during summer months, especially with casual users, as more people take advantage of the good weather. That, and the impact of tourists. Note the more narrow curve of the bars representing casuals compared to the more wide distribution of members, who generally keep their riding up throughout the year, as much as they can.
