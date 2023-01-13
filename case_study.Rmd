@@ -1,0 +1,277 @@
+---
+title: "ga_case_study"
+author: "Stefan Insang"
+date: "2022-12-28"
+output:
+  html_document: github_document
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = '/tmp')
+```
+
+# Introduction
+
+This is my capstone project for the Google Analytics Certification course offered through Coursera. I chose one of the default tracks, figuring that it would be best to get my feet wet with a bonafied project with clear goals/tasks rather than come up with my own, where I'd have more wiggle room to slack off on requirements.
+
+# Scenario
+
+You are a junior data analyst working in the marketing analyst team at Cyclistic, a bike-share company in Chicago. The director of marketing believes the company's future success depends on maximizing the number of annual memberships. Therefore, your team wants to understand how casual riders and annual members use Cyclistic bikes differently. From these insights, your team will design a new marketing strategy to convert casual riders into annual members. But first, Cyclistic executives must approve your recommendations, so they must be backed up with compelling data insights and professional data visualizations.
+
+## Key Questions
+
+Because our task is to analyze given data and devise a plan to convert casual customers into members, it is important to realize the questions we may need to keep in the back of our minds as we go forward.
+
+1.  How do casual riders and members differ?
+2.  Why would/should a casual rider switch to a membership? What would be the benefit; is it a worthy change? What makes/would make it worthy.
+3.  How can Cyclistic use digital media to influence casual riders to become members?
+
+# Preparing the Data
+
+The course provided us with a database full of monthly rider data. Though the database itself spans back a number of years, the task notifies us to use data from the previous 12 months. After downloading the required .csv files, we have all the data we need to begin our analysis. The first step is getting the data ready for it.
+
+Working with 12 separate .csv files with number of rows in the hundreds of thousands is simply unwieldy. **Luckily, they all follow the same format, in that their columns are named the same, and are in the same order. Because of this, we can consolidate all the files into one data set**.
+
+First, we'll load up the packages required for our analysis.
+
+For this project we'll load up
+
+1.  **tidyverse**, as it provides a number of packages that make cleaning the data easier, and it allows us to create visualizations by containing the **ggplot2** package.
+2.  **skimr**, which provides summary statistics for variables in a number of data structures, such as glimpse
+3.  **data.table**, which will help us consolidate our data. In truth, I used this particularly for **`fread()`**, which allows us to import our .csv's data *much* faster than `read_csv()` from tidyverse's **readr** package would. This is because `fread()` is better suited for large data sets, and each csv over 100,000 rows.
+
+### Loading the Packages
+
+```{r}
+library(tidyverse)
+library(skimr)
+library(data.table)
+```
+
+### Importing the Data
+
+I personally placed each csv in a designated folder, allowing me to create use `list.files()` to create a list of the file names as strings.
+
+```{r}
+setwd("~/R Projects/GA_case_study/csv")
+csv_list <- list.files("~/R Projects/GA_case_study/csv")
+```
+
+```{r}
+csv_list
+```
+
+This list makes it easy for R to apply `fread()` to each object in the list, allowing us to use pipes to easily combine each csv into one big data table, aptly named "all_data."
+
+### Consolidating the Data
+
+```{r}
+setwd("~/R Projects/GA_case_study/csv")
+all_data <- csv_list %>% #First, take the list of strings
+  lapply(fread) %>% #lapply (list apply) iterates fread over each csv file
+  bind_rows #combine the previous csv files at their tail end of rows. 
+```
+
+`all_data` will now contain every row from each csv file whose name is contained in `csv_list`.
+
+Now we have a data table consisting of every row from each csv. Let's take a look at it.
+
+There are a number of ways that we can get an idea of exactly what we're looking at. First, let's just check out what type of data we'll be encountering. If you want to see the data table itself, you can do this by clicking it in the Environment tab (if you're using RStudio like I am), or running View()
+
+```{r}
+View(all_data) 
+```
+
+As you can see, our data table has retained all the column names from the 12 individual .csv files.
+
+```{r}
+colnames(all_data)
+```
+
+We can get a concise but more in-depth summary by using the **str()** or **glimpse()** functions.
+
+```{r}
+str(all_data)
+```
+
+```{r}
+glimpse(all_data)
+```
+
+The latitude and longitudes will be helpful for pinpointing the most frequented stations that customers use, but apart from that we don't really have much data to go on for comparing members to casuals. **We have each ride entry's start and end times, but it would be easier if we could see at a glance just how long those rides were.**
+
+### Manipulating and Cleaning the Data
+
+We'll start by adding a new column that will give us the time span of each individual ride in the data table. We can do this by subtracting the **ended_at** and **started_at** columns from each other.
+
+Keep in mind that both columns are in the datetime `<dttm>` format. You can see this for yourself in our glimpse above, note the `<dttm>` .
+
+```{r}
+glimpse(all_data$started_at)
+glimpse(all_data$ended_at)
+```
+
+Our calculations it would be much easier if they were in numeric format. Let's set up a new table with a column for the length of time for each ride. Let's create this column, **`ride_length`** , using the **`mutate()`** function.
+
+```{r}
+all_datav2 <- all_data %>% 
+  mutate(ride_length = ended_at - started_at)
+
+glimpse(all_datav2$ride_length)
+```
+
+Now we can see how long each ride lasted, but this also highlights a few problems with our data.
+
+1.  Our **`ride_length`** column is filled with time elapsed in *seconds*. This isn't an issue on its own, but having the ride lengths shown in *minutes* would be a much better scale.
+2.  Some of our ride_length values are in the *negatives,* which is obviously impossible. Something is wrong in the calculation for that row. To get a negative value would mean that our riders would have ended their rides *earlier* than they began, and if you scroll over to the started_at and ended_at columns for where our ride_length values are negative, that would indeed be the case.
+3.  We have rows where our ride length values are less than a single minute. As far as bike rides go, those people would be better off walking. However, the reality is, these sub-minute long rides are simply cases where the bike was taken out of their docks, and placed back - perhaps the riders found some gum on the seat, who knows. Either way, we have no use for this data. Note, however, that some of start and end stations differ, but this is because the docking stations are probably just around the corner from one another, with separate IDs to differentiate.
+
+```{r}
+test <- all_datav2[all_datav2$ride_length<60] %>% select(started_at, ended_at,start_station_name, end_station_name, ride_length)
+
+View(test[test$start_station_name!=test$end_station_name])
+```
+
+Either way, our main course of action now is to correct these issues. We want a data table with rides over 1 minute long, with our ride_length values easily readable (in minutes).
+
+For good measure, let's also drop any rows with null values. Generally you want to avoid doing this without making sure your reasoning sound, or you might lose data that is for the most part useful - for many reasons, on a case by case basis. In *our* case however, we're already working with over 5 million rows.
+
+Prior to removing rows with null values, we have 5,733,451 rows in `all_data.`
+
+```{r}
+nrow(all_data)
+```
+
+After filtering we have 5,567,644 rows. Plenty to to work with. Let's apply this back to our original table, and get rid of the tests.
+
+```{r}
+all_data <- all_data %>%
+  drop_na() %>%
+  mutate(ride_length_min = as.numeric(round(difftime(ended_at, started_at, units="mins")))) %>%
+  subset(ride_length_min > 1)
+```
+
+A little nitpicky, but let's change the `member_casual` column to `account`.
+
+```{r}
+all_data <- all_data %>% rename(account = member_casual)
+```
+
+To make it that much easier for analysis and visualization purposes, it would be great if we could see at a glance on what day, or month each ride took place. We can do this by converting the `started_at` values to Date formats, and creating columns for each year, month, day(numbered), and day(name) of the week.
+
+We'll also order each day of the week so they look more natural on the graphs you'll see in just a bit.
+
+```{r}
+all_data$date <- as.Date(all_data$started_at)
+all_data$year <- format(as.Date(all_data$date), "%Y")
+all_data$month <- format(as.Date(all_data$date), "%m")
+all_data$day <- format(as.Date(all_data$date), "%d")
+all_data$day_of_week <- format(as.Date(all_data$date), "%A")
+
+all_data$day_of_week <- ordered(all_data$day_of_week,
+                                levels=c("Sunday",
+                                         "Monday",
+                                         "Tuesday",
+                                         "Wednesday",
+                                         "Thursday",
+                                         "Friday",
+                                         "Saturday"))
+```
+
+# Comparing Casual Customers Vs. Members
+
+Now we create some tables that our visualizations will use. We start with a daily table.
+
+```{r}
+
+daily_table <- all_data %>% #Number of rides per day, by each account type
+  group_by(account, day_of_week) %>%
+  summarise(number_of_rides = n(), .groups="drop") %>%
+  arrange(account, day_of_week)
+
+daily_table
+```
+
+### Total Rides Per Day
+
+```{r}
+daily_table %>%
+  ggplot(aes(x = day_of_week,
+             y = number_of_rides,
+             fill = account))+
+  labs(title="Total Rides Per Day")+
+  geom_col(position="dodge")+
+  labs(x="Day of Week",
+       y="Number of Rides")
+```
+
+Casual customers are most likely to take rides on the weekends rather than weekdays. This makes sense, as they are not incentivised to use it daily. That would simply be more money that they'd spend than if they were members.
+
+On the opposite end, members are most likely to take rides on weekdays rather than weekends. More frequent use indicates that they use the bikes for transit needs as the work week begins. Casual members treat the bikes as more of an activity than a necessity, unless they're in a pinch to get somewhere.
+
+### Average Ride Length Per Day
+
+```{r}
+all_data %>%
+  group_by(account, day_of_week) %>%
+  summarize(average_ride_length = mean(ride_length_min),
+            .groups = "drop") %>%
+  ggplot(aes(x=day_of_week,
+             y=average_ride_length,
+             fill=account))+
+  geom_col(position="dodge")+
+  labs(x = "Day of Week",
+       y = "Average Ride Length",
+       title="Average Ride Lengths of Casuals Vs. Members")
+
+```
+
+On average, casual users actually ride a good deal longer on average than members. This can be attributed to casual users treating it as an activity rather than a necessity. For example, once reaching their workplace, a customer who is a member will not begin another ride until they go home. Simply put, it seems like casual members are getting their moneys worth from their sporadic uses.
+
+### Rides Per Month
+
+```{r}
+all_data %>%
+  group_by(account, month) %>%
+  summarize(number_of_rides = n(),
+            .groups="drop") %>%
+  arrange(account, month) %>%
+  ggplot(aes(x=month,
+             y=number_of_rides,
+             fill=account))+
+  geom_col(position="dodge")+
+  labs(title="Total Rides Per Month Casuals Vs. Members",
+       x = "Month",
+       y = "Number of Rides")
+```
+
+Ridership decreases during the winter months across the board. The company operates in Chicago, where winters can be harsh, and icy roads are treacherous.
+
+Ridership *increases* during summer months, especially with casual users, as more people take advantage of the good weather. That, and the impact of tourists. Note the more narrow curve of the bars representing casuals compared to the more wide distribution of members, who generally keep their riding up throughout the year, as much as they can.
+
+# Suggestions For Converting Casual Customers
+
+There are a number of ways that Cyclistic could conver their casual users to members.
+
+#### Tiered Pricing/Membership options
+
+As per the case study guidelines, Cyclistic only offers 3 plans: Single-Ride, Full-Day, and Annual Passes. The jump from Full-Day to Annual is too large for a casual user to try and justify paying for an entire year if they might need the bike service for just one or two days, or even a week.
+
+Weekly, Monthly, or even Quarterly plans would provide incentive for customers to buy a plan if they can see themselves biking more than just once in a blue moon. Tourists, and even city dwellers can take advantage of membership plans during the summers.
+
+#### Ride Length Discount
+
+The average ride length for members is under 15 minutes per day, but casual riders are pushing almost double that. Introducing an incentive for breaking the average could convince casual riders to buy a membership, since they are already riding more than members.
+
+#### Weekend Riders
+
+Introduce a plan for the casual members that ride on weekends. Perhaps discounting rides on those days.
+
+# Further Consideration
+
+Using the Lat and Long values would help create a map of high traffic areas in the Chicago area as per ride data. Unfortunately, Tableau Public is incredibly slow often, and with literal millions of lat-longs, after even loading up the data doing anything else with it was slower than a snail. I opted to leave this out.
+
+However, as you might expect, the Chicago metro is easily the most high-trafficked. Advertisements or city oriented bikelines could provide an addition avenue for for drumming up membership interest, or perhaps partnering with local businesses.
+
+This was done with pure R and R-packages because that's what I wanted to use and learn, but importing the csvs into Excel for easy conversion into pivot tables and the like. The only thing is that would have been *much* slower, due to the number of entries.
